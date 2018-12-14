@@ -90,7 +90,6 @@ def perception_step(Rover):
         # Example: Rover.vision_image[:,:,0] = obstacle color-thresholded binary image
         #          Rover.vision_image[:,:,1] = rock_sample color-thresholded binary image
         #          Rover.vision_image[:,:,2] = navigable terrain color-thresholded binary image
-
     # 5) Convert map image pixel values to rover-centric coords
     # 6) Convert rover-centric pixel values to world coordinates
     # 7) Update Rover worldmap (to be displayed on right side of screen)
@@ -103,7 +102,54 @@ def perception_step(Rover):
         # Rover.nav_dists = rover_centric_pixel_distances
         # Rover.nav_angles = rover_centric_angles
     
- 
+    dst_size=5
+    bottom_offset=6
     
+    img = Rover.img 
+    source = np.float32([[14, 140], [301 ,140],[200, 96], [118, 96]])
+    destination = np.float32([
+        [img.shape[1]/2 - dst_size, img.shape[0] - bottom_offset],
+        [img.shape[1]/2 + dst_size, img.shape[0] - bottom_offset],
+        [img.shape[1]/2 + dst_size, img.shape[0] - 2*dst_size - bottom_offset], 
+        [img.shape[1]/2 - dst_size, img.shape[0] - 2*dst_size - bottom_offset],
+        ])
+   
+    
+    warped = perspect_transform(img, source, destination)
+    navigable = color_thresh(warped, rgb_thresh=(160, 160, 160))
+    obstical = np.logical_not(navigable)
+    
+    buf = 10
+    thresh = np.array([111,111,50])
+    rock = (warped > thresh-buf) & (warped < thresh+buf)
+    rock = rock[:,:,0] & rock[:,:,1] & rock[:,:,2]
+
+    Rover.vision_image[:,:,0] = obstical * 255
+    Rover.vision_image[:,:,1] = rock * 255
+    Rover.vision_image[:,:,2] = navigable  * 255
+
+    xrov_nav, yrov_nav = rover_coords(navigable)
+    xrov_rock, yrov_rock = rover_coords(rock)
+    xrov_obst, yrov_obst = rover_coords(obstical)
+
+    xpos, ypos = Rover.pos
+    world_size = Rover.worldmap.shape[0]
+    scale = 2*dst_size
+    xworld_nav, yworld_nav = pix_to_world(
+            xrov_nav, yrov_nav, xpos, ypos, Rover.yaw, world_size, scale)
+
+    xworld_rock, yworld_rock = pix_to_world(
+            xrov_rock, yrov_rock, xpos, ypos, Rover.yaw, world_size, scale)
+
+    xworld_obst, yworld_obst = pix_to_world(
+            xrov_obst, yrov_obst, xpos, ypos, Rover.yaw, world_size, scale)
+
+    Rover.worldmap[yworld_obst, xworld_obst, 0] += 1
+    Rover.worldmap[yworld_rock, xworld_rock, 1] += 2.5
+    Rover.worldmap[yworld_nav, xworld_nav, 2] += 10
+
+    dist, angles = to_polar_coords(xrov_nav, yrov_nav)
+    Rover.nav_dists = dist
+    Rover.nav_angles = angles
     
     return Rover
